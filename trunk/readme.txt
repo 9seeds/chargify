@@ -4,7 +4,7 @@ Website Link: http://9seeds.com
 Tags: Chargify, subscription, registration, tools, membership
 Requires at least: 2.9
 Tested up to: 4.1.1
-Stable Tag: 1.0.4
+Stable Tag: 2.0
 
 WP-Chargify allows users to integrate the Chargify service with WordPress.
 

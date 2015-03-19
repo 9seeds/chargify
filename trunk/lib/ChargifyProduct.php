@@ -11,20 +11,47 @@ class ChargifyProduct extends ChargifyConnector
   private $accounting_code;
   private $interval_unit;
   private $interval;
+  private $description;
 
-  public function __construct(SimpleXMLElement $product_xml_node)
-  {  
-    //Load object dynamically and convert SimpleXMLElements into strings
-    foreach($product_xml_node as $key => $element) {
-      if (count($element)) {
-        foreach($element as $childname => $child) {
-          $this->{$key}[$childname] = (string)$child;
-        }
-      } 
-      else {
-        $this->$key = (string)$element;
-      }
-    }
+  public function __construct($in)
+  {
+	if(!is_object($in))
+	{	  
+		$product_xml_node = new SimpleXMLElement($product_xml_node);
+		//Load object dynamically and convert SimpleXMLElements into strings
+		foreach($product_xml_node as $key => $element) 
+		{
+			if (count($element)) 
+			{
+				foreach($element as $childname => $child) 
+				{
+					$this->{$key}[$childname] = (string)$child;
+				}
+			}
+			else 
+			{
+				$this->$key = (string)$element;
+			}
+		}
+	}
+	else
+	{
+		$product_xml_node = (array)$in;
+		foreach($product_xml_node as $key => $element) 
+		{
+			if (is_object($element)) 
+			{
+				foreach((array)$element as $childname => $child) 
+				{
+					$this->{$key}[$childname] = (string)$child;
+				}
+			}
+			else 
+			{
+				$this->$key = (string)$element;
+			}
+		}
+	}
   }
   
   
@@ -45,5 +72,7 @@ class ChargifyProduct extends ChargifyConnector
   public function getIntervalUnit() { return $this->interval_unit; }
   
   public function getInterval() { return $this->interval; }
+
+  public function getDescription() {return $this->description; }
 
 }

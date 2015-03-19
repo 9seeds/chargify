@@ -67,7 +67,12 @@ class ChargifyConnector
   {
     return $this->sendRequest('/products.xml');
   }
-  
+  public function retrieveAllWebhooksXML()
+  {
+    return $this->sendRequest('/webhooks.xml');
+  }
+
+
   /*
      Example post xml:     
  
@@ -196,6 +201,13 @@ class ChargifyConnector
     
     return $product_objects;
   }
+  public function getAllWebhooks()
+  {
+    $xml = $this->retrieveAllWebhooksXML();
+	$all_webhooks = new SimpleXMLElement($xml);
+   
+    return $all_webhooks;
+  }
   
   /**
    * @return ChargifyCustomer
@@ -210,26 +222,27 @@ class ChargifyConnector
     return $customer;
   }
 
+
   public function cancelSubscription($id) {
     return $this->sendRequest('/subscriptions/' . $id . '.xml',NULL,'delete');
   }
 
-  protected function curlArguments($uri, $post_xml = null) {
-    $args[] = "-k";
-    $args[] = "-u {$this->active_api_key}:x";
-    $args[] = "-H Content-Type:application/xml";
-    $args[] = "https://{$this->active_domain}.chargify.com{$uri}";
-    
-    if ($post_xml) {
-      $args[] = "--data-binary \"$post_xml\"";
-    }
-    
-    return $args;
+  public function updateProduct($id,$data) {
+	$post_xml = '
+		<?xml version="1.0" encoding="UTF-8"?>
+		<product>
+			<return_url>'.$data['return_url'].'</return_url>
+		</product> 
+		';
+	
+	$xml = $this->sendRequest('/products/'.$id.'.xml',trim($post_xml),'put');
+    //$product_xml_node = new SimpleXMLElement($xml);
+	//$product = htmlentities($product_xml_node);
+	$product = htmlentities($xml);
+	return $product;
   }
   
   protected function sendRequest($uri, $post_xml = null,$method = null) {    
-    //exec('curl ' . join(' ', $this->curlArguments($uri, $post_xml)), $output);
-    //$xml = implode("\n", $output);
 	$apiUrl = "https://{$this->active_domain}.chargify.com{$uri}";
 	$ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $apiUrl);
@@ -237,7 +250,11 @@ class ChargifyConnector
     curl_setopt($ch, CURLOPT_RETURNTRANSFER,1);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION,1);
     curl_setopt($ch, CURLOPT_HEADER , 0);
-	curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE); 
+	curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
+	if($method == 'put')
+	{
+		curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
+	}
 	if($post_xml)
 	{
     	curl_setopt($ch, CURLOPT_POST, 1);
@@ -249,9 +266,36 @@ class ChargifyConnector
 		curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "DELETE");
 	}
 	curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-
     $xml = curl_exec($ch);
-    curl_close($ch);
+	
+	curl_close($ch);
 	return $xml;
   }
+	protected function generate_xml_from_array($array, $node_name) {
+		$xml = '';
+
+		if (is_array($array) || is_object($array)) {
+			foreach ($array as $key=>$value) {
+				if (is_numeric($key)) {
+					$key = $node_name;
+				}
+
+				$xml .= '<' . $key . '>' . "\n" . generate_xml_from_array($value, $node_name) . '</' . $key . '>' . "\n";
+			}
+		} else {
+			$xml = htmlspecialchars($array, ENT_QUOTES) . "\n";
+		}
+
+		return $xml;
+	}
+
+	protected function generate_valid_xml_from_array($array, $node_block='nodes', $node_name='node') {
+		$xml = '<?xml version="1.0" encoding="UTF-8" ?>' . "\n";
+
+		$xml .= '<' . $node_block . '>' . "\n";
+		$xml .= self::generate_xml_from_array($array, $node_name);
+		$xml .= '</' . $node_block . '>' . "\n";
+
+		return $xml;
+	}
 }
