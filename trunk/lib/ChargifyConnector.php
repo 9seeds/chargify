@@ -190,8 +190,8 @@ class ChargifyConnector
     $xml = $this->retrieveAllProductsXML();
 	
 	$all_products = new SimpleXMLElement($xml);
-   
-    $product_objects = array();
+    
+	$product_objects = array();
     
     foreach($all_products as $product)
     {
@@ -230,15 +230,14 @@ class ChargifyConnector
   public function updateProduct($id,$data) {
 	$post_xml = '
 		<?xml version="1.0" encoding="UTF-8"?>
-		<product>
-			<return_url>'.$data['return_url'].'</return_url>
-		</product> 
-		';
-	
+		<product>';
+	foreach($data as $k=>$v)
+		$post_xml .= '<'.$k.'>'.$v.'</'.$k.'>';
+	$post_xml .= '</product>';
+
 	$xml = $this->sendRequest('/products/'.$id.'.xml',trim($post_xml),'put');
-    //$product_xml_node = new SimpleXMLElement($xml);
-	//$product = htmlentities($product_xml_node);
-	$product = htmlentities($xml);
+    $pxml = new SimpleXMLElement($xml);
+	$product = new ChargifyProduct($pxml);
 	return $product;
   }
   
@@ -269,33 +268,11 @@ class ChargifyConnector
     $xml = curl_exec($ch);
 	
 	curl_close($ch);
+	
+	libxml_use_internal_errors(true);
+	$sxe = simplexml_load_string($xml);
+	if (!$sxe) { $xml = '<error>'.$xml.'</error>'; }
+
 	return $xml;
   }
-	protected function generate_xml_from_array($array, $node_name) {
-		$xml = '';
-
-		if (is_array($array) || is_object($array)) {
-			foreach ($array as $key=>$value) {
-				if (is_numeric($key)) {
-					$key = $node_name;
-				}
-
-				$xml .= '<' . $key . '>' . "\n" . generate_xml_from_array($value, $node_name) . '</' . $key . '>' . "\n";
-			}
-		} else {
-			$xml = htmlspecialchars($array, ENT_QUOTES) . "\n";
-		}
-
-		return $xml;
-	}
-
-	protected function generate_valid_xml_from_array($array, $node_block='nodes', $node_name='node') {
-		$xml = '<?xml version="1.0" encoding="UTF-8" ?>' . "\n";
-
-		$xml .= '<' . $node_block . '>' . "\n";
-		$xml .= self::generate_xml_from_array($array, $node_name);
-		$xml .= '</' . $node_block . '>' . "\n";
-
-		return $xml;
-	}
 }

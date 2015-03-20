@@ -1,5 +1,4 @@
 <?php
-
 //Reference Documentation: http://support.chargify.com/faqs/api/api-products
 
 class ChargifyProduct extends ChargifyConnector
@@ -12,48 +11,35 @@ class ChargifyProduct extends ChargifyConnector
   private $interval_unit;
   private $interval;
   private $description;
+  private $return_url;
 
-  public function __construct($in)
-  {
-	if(!is_object($in))
-	{	  
-		$product_xml_node = new SimpleXMLElement($product_xml_node);
-		//Load object dynamically and convert SimpleXMLElements into strings
-		foreach($product_xml_node as $key => $element) 
+  public function __construct(SimpleXMLElement $product_xml_node)
+  { 
+    //Load object dynamically and convert SimpleXMLElements into strings
+	foreach($product_xml_node as $key => $element) 
+	{	
+		if (count($element)) 
 		{
-			if (count($element)) 
+			if($key == 'public_signup_pages')
+			{
+				foreach($element as $e)
+					$this->{$key}[] = array('id'=>(string)$e->id,'url'=>(string)$e->url);
+			}
+			else
 			{
 				foreach($element as $childname => $child) 
 				{
 					$this->{$key}[$childname] = (string)$child;
 				}
 			}
-			else 
-			{
-				$this->$key = (string)$element;
-			}
-		}
-	}
-	else
-	{
-		$product_xml_node = (array)$in;
-		foreach($product_xml_node as $key => $element) 
+		} 
+		else 
 		{
-			if (is_object($element)) 
-			{
-				foreach((array)$element as $childname => $child) 
-				{
-					$this->{$key}[$childname] = (string)$child;
-				}
-			}
-			else 
-			{
-				$this->$key = (string)$element;
-			}
+			$this->$key = (string)$element;
 		}
 	}
-  }
-  
+}
+
   
   /* Getters */
   
@@ -75,4 +61,5 @@ class ChargifyProduct extends ChargifyConnector
 
   public function getDescription() {return $this->description; }
 
+  public function getReturnUrl() {return $this->return_url; }
 }

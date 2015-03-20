@@ -76,9 +76,9 @@ class chargify
 		foreach($posts as $k => $post)
 		{
 			$d = get_post_meta($post->ID, 'chargify_access', true); 
-			if(isset($d['levels']) && is_array($d["levels"]))
+			if(isset($d['levels']) && is_array($d["levels"]) && !empty($d['levels']))
 			{
-				if(!array_intersect_key($u->chargify_level,$d["levels"]))
+				if(!$u->ID ||(is_array($d["levels"]) && !array_intersect_key($u->chargify_level,$d["levels"])))
 				{
 					switch($chargify["chargifyNoAccessAction"])
 					{
@@ -174,9 +174,9 @@ class chargify
 		if(current_user_can( 'manage_options' ))
 			return $content;
 
-		if(isset($d['levels']) && is_array($d["levels"]))
+		if(isset($d['levels']) && is_array($d["levels"]) && !empty($d['levels']))
 		{
-			if(array_intersect_key($u->chargify_level,$d["levels"]))
+			if($u->ID && array_intersect_key($u->chargify_level,$d["levels"]))
 			{
 				$keys = array_intersect_key($d['levels'],$u->chargify_level);
 				asort($keys);
@@ -294,7 +294,7 @@ class chargify
 			{
 				if ((isset($filteraccountingcodes[$p->getAccountCode()]) && $filteraccountingcodes[$p->getAccountCode()]) || count($filteraccountingcodes) == 0) {
 					$form .= '<tr>';
-					$form .= '<td><div align="center"><strong><p>'.$p->getName().'</strong><br>$'.$p->getPriceInDollars().' '.($p->getInterval() == 1 ? 'each '.$p->getIntervalUnit() : 'every '.$p->getInterval().' '.$p->getIntervalUnit().'s').'<br>'.$p->description.'</p></div></td>';
+					$form .= '<td><div align="center"><strong><p>'.$p->getName().'</strong><br>$'.$p->getPriceInDollars().' '.($p->getInterval() == 1 ? 'each '.$p->getIntervalUnit() : 'every '.$p->getInterval().' '.$p->getIntervalUnit().'s').'<br>'.$p->getDescription().'</p></div></td>';
 					$form .= '<td><p><input onclick="javascript:document.chargifySignupForm.submit.value=\''.$p->id.'\';" name="submit'.$p->getHandle().'" type="submit" value="'.$p->getName().'"></p></td>';
 					$form .= '</tr>';
 					$productdisplayed = 1;
@@ -337,6 +337,7 @@ class chargify
 			
 			$products = self::products();
 			$productdisplayed = 0;
+			if(is_array($products))
 			foreach($products as $p)
 			{
 				if ((isset($filteraccountingcodes[$p->getAccountCode()]) && $filteraccountingcodes[$p->getAccountCode()]) || count($filteraccountingcodes) == 0) {
@@ -633,7 +634,11 @@ class chargify
 					update_usermeta( $user_id, 'chargify_level', array($res->getProduct()->getHandle() => 1)); 
 					update_usermeta( $user_id, 'chargify_custid', $res->getCustomer()->getId()); 
 					$_POST["chargify_signup_error"]['ERROR'] = '<strong>'.$d['chargifyThankYou'].'</strong>';
-					self::login( $user_id, $user_email); 
+
+					if(!$_POST['return_url'])
+						$_POST['return_url'] = site_url();
+
+					self::login( $user_id, $user_email,$_POST['return_url']); 
 				}
 			}	
 		}
@@ -658,10 +663,12 @@ class chargify
 				return $post_id;
 			}
 		}
+		$levels = array();
 
 		if(is_array($_POST['chargifyAccess']))
 			foreach($_POST['chargifyAccess'] as $handle => $access)
-				$levels[$handle] = $access['drip'];
+				if($access['enable'] == $handle)
+					$levels[$handle] = $access['drip'];
 
 		$data["levels"] = $levels;
 		
@@ -681,7 +688,6 @@ class chargify
 			'chargifySignupType'=>'default',
 			'chargifyNoAccessAction'=>'default',
 			'chargifyDefaultNoAccess'=>'You are not allowed to see this post. Please upgrade your account to see this content',
-			'chargifyThankYou'=>'<strong>Subscription successfuly created!</strong>',
 			'chargifySignupLink'=>''
 		);
 		
@@ -712,8 +718,10 @@ class chargify
 		{
 			if(isset($_REQUEST['chargifySignupLink']) && $_REQUEST['chargifySignupLink'] == 'auto-create')
 				$signupurl = get_permalink(wp_insert_post(array('post_type'=>'page','post_title'=>'Chargify','post_status'=>'publish')));
-			else
+			elseif(isset($_REQUEST['chargifySignupLink']) && $_REQUEST['chargifySignupLink'])
 				$signupurl = $_REQUEST['chargifySignupLink'];
+			else
+				$signupurl = $d['chargifySignupLink'];
 
 			$d["chargifyApiKey"] = $_REQUEST["chargifyApiKey"];
 			$d["chargifyTestApiKey"] = $_REQUEST["chargifyTestApiKey"];
@@ -722,7 +730,7 @@ class chargify
 			$d["chargifyMode"] = $_REQUEST["chargifyMode"];
 			$d["chargifyNoAccessAction"] = $_REQUEST["chargifyNoAccessAction"];
 			$d["chargifyDefaultNoAccess"] = $_REQUEST["chargifyDefaultNoAccess"];
-			$d["chargifyThankYou"] = $_REQUEST["chargifyThankYou"];
+			//$d["chargifyThankYou"] = $_REQUEST["chargifyThankYou"];
 			$d["chargifySignupLink"] = $signupurl;
 			$d["chargifySignupType"] = $_REQUEST["chargifySignupType"];
 			$d["chargifyOrderFormPos"] = $_REQUEST["chargifyOrderFormPos"];
@@ -740,8 +748,11 @@ class chargify
 				$connector = new ChargifyConnector($opt);
 				foreach($_REQUEST['chargifyproduct'] as $k=> $v)
 				{
-					//$req = $connector->updateProduct($k, array('return_url'=>$signupurl));
-					//echo '<pre>'.print_r($req,true).'</pre>';
+					if($v['enable'] == 'on')
+					{
+						$product = $connector->updateProduct($k, array('return_url'=>$signupurl,'accounting_code'=>$v['acctcode'],'description'=>$v['description'],'name'=>$v['name']));
+						$d['chargifyProducts'][$k]['raw'] = base64_encode(serialize($product));
+					}
 				}
 			}
 			update_option('chargify',$d);
@@ -795,7 +806,7 @@ class chargify
 			foreach($products as $p)
 			{
 				$sync = 'sync';
-				if($d['chargifyProducts'][$p->id]['raw'] != base64_encode(serialize($p)))
+				if($d['chargifyProducts'][$p->id]['raw'] != base64_encode(serialize($p)) && $d['chargifyProducts'][$p->id]['enable'] == 'on')
 					$sync = 'outofsync';	
 				echo '<input type="hidden" name="chargifyproduct['.$p->id.'][raw]" value="'.base64_encode(serialize($p)).'">';
 				echo '<div class="chargify-product">';
@@ -803,6 +814,7 @@ class chargify
 				echo '<div>Name<br><input type="text" name="chargifyproduct['.$p->id.'][name]" value="'.$p->getName().'"></div>';
 				echo '<div>Description<br><textarea name="chargifyproduct['.$p->id.'][description]">'.$p->getDescription().'</textarea></div>';
 				echo '<div>Accounting Code<br><input type="text" name="chargifyproduct['.$p->id.'][acctcode]" value="'.$p->getAccountCode().'"></div>';
+				//echo '<div><strong>Return URL: </strong>'.$p->getReturnUrl().'</div>';
 				echo '</div>';
 			}
 			echo '</div>';
@@ -811,7 +823,7 @@ class chargify
             echo '<p><em>How will your site process signups. <strong>NOTE: Most users should leave this set to default</strong>.</em></p>
             <table class="form-table"> 
                 <tr valign="top"> 
-                    <th scope="row"><input type="radio" name="chargifySignupType" value="default" '.($d['chargifySignupType'] == 'default' ? 'checked' : '').'>Default</th>
+                    <th scope="row"><input type="radio" name="chargifySignupType" value="default" '.($d['chargifySignupType'] == 'default' || $d['chargifySignupType'] != 'api' ? 'checked' : '').'>Default</th>
                     <td>When a user creates a subscription they will go to Chargify to enter their payment information and be redirected back to this site to see the thank you page</td>
                 </tr>
                 <tr valign="top"> 
@@ -829,8 +841,12 @@ class chargify
 					echo '<select name="chargifySignupLink" >';
 					echo self::pagelist($d['chargifySignupLink']);
 					echo '</select>';
-					echo '<span class="description">This will get linked on a protected page when a user doesn\'t have access to the content</span>
-				</td>  
+					echo '<span class="description">This will get linked on a protected page when a user doesn\'t have access to the content</span><br>';
+					if($d['chargifySignupLink'])
+						echo '<strong>Currently: </strong>'.get_the_title(url_to_postid( $d['chargifySignupLink'] )).'&nbsp;<a href="'.get_edit_post_link(url_to_postid( $d['chargifySignupLink'] )).'">Edit Order Page</a>';
+					else
+						echo '<strong>Order Page Not Set</strong>';
+			echo '</td>  
 			</tr>
 			<th scope="row">Order Form Position</th>
 			<td><select name="chargifyOrderFormPos"><option value="top"'.($d["chargifyOrderFormPos"] == "top" ? " SELECTED" : "").'>Top</option><option value="bottom"'.($d["chargifyOrderFormPos"] == "bottom" ? " SELECTED" : "").'>Bottom</option></select>';
@@ -855,7 +871,8 @@ class chargify
 					echo '</td>'; 
                 echo '</tr>';
                 echo '</table>';
-            echo '<hr />';
+			echo '<hr />';
+			/*
             echo '<h3>Thank You Message</h3>';
             echo '<table class="form-table">';
 			echo '<tr valign="top">';
@@ -863,7 +880,8 @@ class chargify
 					wp_editor($d['chargifyThankYou'],'chargifyThankYou'); 
 				echo '</td>'; 
 			echo '</tr>';
-            echo '</table>';
+			echo '</table>';
+			 */
 			echo '</div>';
             echo '<p class="submit"><input class="button-primary" type="submit" name="Submit" value="Update Options" /></p>';
          echo '</form>';
@@ -884,6 +902,7 @@ class chargify
 		do_action( 'wp_login', $user_login, $user );
 
 		wp_redirect($return_url);
+		exit;
 	}
 	function pagelist($cur = '')
 	{
@@ -896,11 +915,13 @@ class chargify
 			'order' => 'ASC'
 		);
 		$pages = get_posts($args);
+		echo '<option value="">- Choose a Page -</option>';
 		echo '<option value="auto-create">- Auto Create Page -</option>';
 		foreach($pages as $p)
 		{
 			$url = get_permalink($p->ID);
-			echo '<option value="'.$url.'"'.($url == $cur ? ' SELECTED':'').'>'.$p->post_title.'</option>';
+			//echo '<option value="'.$url.'"'.($url == $cur ? ' SELECTED':'').'>'.$p->post_title.'</option>';
+			echo '<option value="'.$url.'">'.$p->post_title.'</option>';
 		}
 		return ob_get_clean();
 	}
