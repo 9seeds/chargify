@@ -201,6 +201,7 @@ class chargify
 
 	function subscriptionListShortCode($atts)
 	{
+		global $current_user;
 		extract(shortcode_atts(array('accountingcodes'=>''), $atts));
 		$filteraccountingcodes = array();
 		if ($accountingcodes != '') {
@@ -211,6 +212,28 @@ class chargify
 		}
 		$d = get_option("chargify");
 		$return_url = $_GET['return_url'];
+
+		if($_POST['chargifySignupFirst'])
+			$first = $_POST['chargifySignupFirst'];
+		elseif($current_user->first_name)
+			$first = $current_user->first_name;
+		else
+			$first = '';
+		if($_POST['chargifySignupLast'])
+			$last = $_POST['chargifySignupLast'];
+		elseif($current_user->last_name)
+			$last = $current_user->last_name;
+		else
+			$last = '';
+		if($_POST['chargifySignupEmail'])
+			$email = $_POST['chargifySignupEmail'];
+		elseif($current_user->data->user_email)
+			$email = $current_user->data->user_email;
+		else
+			$first = '';
+
+
+
 		if($d["chargifySignupType"] == 'api')
 		{	
 			$monthDrop = '<select style="" name="chargifySignupExpMo"><option value="">mm</option>';
@@ -239,15 +262,15 @@ class chargify
 				</tr>
 				<tr>
 					<td>First Name</td>
-					<td><input type="text" name="chargifySignupFirst" value="'.$_POST["chargifySignupFirst"].'"></td>
+					<td><input type="text" name="chargifySignupFirst" value="'.$first.'"></td>
 				</tr>
 				<tr>
 					<td>Last Name</td>
-					<td><input type="text" name="chargifySignupLast" value="'.$_POST["chargifySignupLast"].'"></td>
+					<td><input type="text" name="chargifySignupLast" value="'.$last.'"></td>
 				</tr>
 				<tr>
 					<td>Email</td>
-					<td><input type="text" name="chargifySignupEmail" value="'.$_POST["chargifySignupEmail"].'"></td>
+					<td><input type="text" name="chargifySignupEmail" value="'.$email.'"></td>
 				</tr>
 				<tr>
 					<th colspan="2">Payment Info</th>
@@ -310,6 +333,7 @@ class chargify
 		}
 		else
 		{
+
 			$form ='<form name="chargifySignupForm" method="post" action="">
 			<input type="hidden" name="chargify_signup_noncename" id="chargify_signupcc_noncename" value="'.wp_create_nonce( plugin_basename(__FILE__) ).'" />
 			<input type="hidden" name="return_url" value="'.$_GET['return_url'].'">
@@ -320,15 +344,15 @@ class chargify
 				</tr>
 				<tr>
 					<td>First Name</td>
-					<td><input type="text" name="chargifySignupFirst" value="'.$_POST["chargifySignupFirst"].'"></td>
+					<td><input type="text" name="chargifySignupFirst" value="'.$first.'"></td>
 				</tr>
 				<tr>
 					<td>Last Name</td>
-					<td><input type="text" name="chargifySignupLast" value="'.$_POST["chargifySignupLast"].'"></td>
+					<td><input type="text" name="chargifySignupLast" value="'.$last.'"></td>
 				</tr>
 				<tr>
 					<td>Email</td>
-					<td><input type="text" name="chargifySignupEmail" value="'.$_POST["chargifySignupEmail"].'"></td>
+					<td><input type="text" name="chargifySignupEmail" value="'.$email.'"></td>
 				</tr>
 				<tr>
 					<th colspan="2"><p><strong>Subscription Level</strong></p></th>
@@ -343,7 +367,13 @@ class chargify
 				if ((isset($filteraccountingcodes[$p->getAccountCode()]) && $filteraccountingcodes[$p->getAccountCode()]) || count($filteraccountingcodes) == 0) {
 					$form .= '<tr>';
 					$form .= '<td><div align="center"><strong><p>'.$p->getName().'</strong><br>$'.$p->getPriceInDollars().' '.($p->getInterval() == 1 ? 'each '.$p->getIntervalUnit() : 'every '.$p->getInterval().' '.$p->getIntervalUnit().'s').'<br>'.$p->getDescription().'</p></div></td>';
-					$form .= '<td><p><input onclick="javascript:document.chargifySignupForm.submit.value=\''.$p->id.'\';" name="submit'.$p->getHandle().'" type="submit" value="'.$p->getName().'"></p></td>';
+					if(isset($current_user->chargify_level[$p->getHandle()]))
+					{	
+						$form .= '<td>';
+						$form .= 'You already have access to this level</td>';
+					}
+					else
+						$form .= '<td><p><input onclick="javascript:document.chargifySignupForm.submit.value=\''.$p->id.'\';" name="submit'.$p->getHandle().'" type="submit" value="'.$p->getName().'"></p></td>';
 					$form .= '</tr>';
 					$productdisplayed = 1;
 				}
@@ -411,6 +441,7 @@ class chargify
 	}	
 	function subscriptionCreate()
 	{
+		global $current_user;
 		if(isset($_GET["customer_reference"]) && isset($_GET["subscription_id"]) && !isset($_REQUEST["chargify.subscriptionPost"]))
 		{
 			$d = get_option('chargify');
@@ -430,7 +461,11 @@ class chargify
 						'user_pass' => $user_pass,
 						'user_email' => $email,
 					);
-					$user_id = wp_insert_user($args);
+
+					if(isset($trans['existing_user']) && $trans['existing_user'] == true)
+						$user_id = $current_user->ID;
+					else
+						$user_id = wp_insert_user($args);
 
 					if(is_wp_error($user_id))
 					{
@@ -444,11 +479,25 @@ class chargify
 						$_REQUEST["chargify.subscriptionPost"] = $user_id;
 						delete_transient('chargify-'.$_GET['customer_reference']);
 
-						wp_new_user_notification($user_id, $user_pass);
 						
 						update_usermeta( $user_id, 'chargify_level', array($sub->getProduct()->getHandle()=>time())); 
 						update_usermeta( $user_id, 'chargify_custid', $sub->getCustomer()->getId());
-						self::login( $user_id, $email,$trans['return_url']); 
+						
+						if(isset($trans['existing_user']) && $trans['existing_user'] == true)
+						{
+							if($trans['return_url'])
+								$return_url = $trans['return_url'];
+							else
+								$return_url = site_url();
+
+							wp_redirect($return_url);
+							exit;
+						}
+						else
+						{
+							wp_new_user_notification($user_id, $user_pass);
+							self::login( $user_id, $email,$trans['return_url']);
+						}
 					}
 				}
 			}
@@ -456,6 +505,7 @@ class chargify
 	}
 	function subscriptionRedirect()
 	{
+		global $current_user;
 		if ( wp_verify_nonce( $_POST['chargify_signup_noncename'], plugin_basename(__FILE__) ) && is_numeric($_POST["submit"]))
 		{	
 			
@@ -468,7 +518,7 @@ class chargify
 			$d = get_option("chargify");
 			$user_login = sanitize_user( $_POST["chargifySignupEmail"] );
 			$user_email = apply_filters( 'user_registration_email', $_POST["chargifySignupEmail"] );
-			if(username_exists($user_login) || email_exists($user_email))
+			if((username_exists($user_login) || email_exists($user_email)) && !$current_user->ID)
 			{
 				$_POST["chargify_signup_error"] = array('ERROR'=>"That email address is already in use, please choose another.");
 				return 0;
@@ -483,18 +533,36 @@ class chargify
 				$trans["user_pass"] = $user_pass;
 				$trans["return_url"] = $return_url;
 
-				set_transient("chargify-".md5($user_email),$trans);
+				//current user already logged in...
+				if($current_user->ID)
+					$trans['existing_user'] = true;
 
-				$uri = '?first_name='.urlencode($_POST["chargifySignupFirst"]).'&last_name='.urlencode($_POST["chargifySignupLast"]).'&email='.urlencode($_POST["chargifySignupEmail"]).'&reference='.urlencode(md5($user_email));
-				if($d["chargifyMode"] == 'test')
+				set_transient("chargify-".md5($user_email.$_POST['submit']),$trans);
+
+				$opt = array("api_key" => $d["chargifyApiKey"],"test_api_key" => $d["chargifyTestApiKey"],"domain" => $d["chargifyDomain"],"test_domain" => $d["chargifyTestDomain"],"test_mode"=>($d["chargifyMode"] == 'test'? TRUE : FALSE));	
+				$connector = new ChargifyConnector($opt);
+				$product = $connector->getProductByID($_POST['submit']);
+				
+				$pubpage = array_shift($product->public_signup_pages);
+				if(is_array($pubpage))
 				{
-					header("Location: https://".$d["chargifyTestDomain"].".chargify.com/h/".$_POST["submit"]."/subscriptions/new".$uri);
+					$uri = '?first_name='.urlencode($_POST["chargifySignupFirst"]).'&last_name='.urlencode($_POST["chargifySignupLast"]).'&email='.urlencode($_POST["chargifySignupEmail"]).'&reference='.urlencode(md5($user_email.$_POST['submit']));
+					
+					header("Location: ".$pubpage['url'].$uri);
 					exit;
-				}
-				else
-				{
-					header("Location: https://".$d["chargifyDomain"].".chargify.com/h/".$_POST["submit"]."/subscriptions/new".$uri);
-					exit;
+
+					/*
+					if($d["chargifyMode"] == 'test')
+					{
+						header("Location: https://".$d["chargifyTestDomain"].".chargify.com/h/".$_POST["submit"]."/subscriptions/new".$uri);
+						exit;
+					}
+					else
+					{
+						header("Location: https://".$d["chargifyDomain"].".chargify.com/h/".$_POST["submit"]."/subscriptions/new".$uri);
+						exit;
+					}
+					 */
 				}
 			}
 		}
@@ -771,6 +839,7 @@ class chargify
 				echo '<a href="#" class="nav-tab" id="products">Products</a>';
 				echo '<a href="#" class="nav-tab" id="signup">Order Form</a>';
 				echo '<a href="#" class="nav-tab" id="messages">Messages and Pages</a>';
+				echo '<a href="#" class="nav-tab" id="help">Help</a>';
 			echo '</h2>';
 				
 			echo '<div id="account" class="chargify-options-hidden-pane">';
@@ -814,6 +883,7 @@ class chargify
 				echo '<div>Name<br><input type="text" name="chargifyproduct['.$p->id.'][name]" value="'.$p->getName().'"></div>';
 				echo '<div>Description<br><textarea name="chargifyproduct['.$p->id.'][description]">'.$p->getDescription().'</textarea></div>';
 				echo '<div>Accounting Code<br><input type="text" name="chargifyproduct['.$p->id.'][acctcode]" value="'.$p->getAccountCode().'"></div>';
+				//echo '<div>Return Parameters<br><input type="text" name="chargifyproduct['.$p->id.'][return_params]" value="'.(strlen($p->getReturnParams())?$p->getReturnParams():'subscription_id={subscription_id}&customer_reference={customer_reference}').'"></div>';
 				//echo '<div><strong>Return URL: </strong>'.$p->getReturnUrl().'</div>';
 				echo '</div>';
 			}
@@ -883,17 +953,69 @@ class chargify
 			echo '</table>';
 			 */
 			echo '</div>';
-            echo '<p class="submit"><input class="button-primary" type="submit" name="Submit" value="Update Options" /></p>';
+   			echo '<div id="help" class="chargify-options-hidden-pane">';
+			echo '<h1>Chargify Plugin Configuration Instructions</h1>';
+			echo '<div style="width:50%;display:inline-block">';
+?>
+			<h2>1. <a id="click-1" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-signup'); ?>" onClick="javascript:jQuery('#signup').click();">Choose or have the plugin create</a> the order page</h2>
+			<h2>2. Enter your <a id="click-2" class="click-help" href="https://app.chargify.com/login.html" target="_blank">Chargify API keys</a> into the <a id="click-3" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-account'); ?>" onClick="javascript:jQuery('#account').click();">Chargify Account tab</a></h2>
+			<h2>3. Setup the <a id="click-4" class="click-help" href="https://app.chargify.com/login.html" target="_blank">Return URL and Return Parameters</a> for each product's public signup page</h2>
+			<em>This is important and has to happen in your Chargify account otherwise people will not be redirected back to your site after purchase and their accounts will not be created and everyone will become sad. Copy the Return URL and Return Parameters below into their respective slots on the public signup page's settings page</em><br><br>
+			<strong>Return URL after successful signup:</strong><br>
+			<style>code{display:block}</style>
+			<code>
+			<?php echo site_url(); ?>
+			</code>
+			<strong>Return Parameters:</strong><br>
+			<code>
+			subscription_id={subscription_id}&customer_reference={customer_reference}
+			</code>
+			<h2>4. Enable the products you want on your site in the <a id="click-5" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-products'); ?>" onClick="javascript:jQuery('#products').click();">Products tab</a></h2>
+			<h2>5. Protect some <a id="click-6" class="click-help" href="<?php echo admin_url(''); ?>">pages or posts</a></h2>
+			<h2>6. Test some transactions with CC number of 1, CVV of 123 and any Expiration in the future make sure the subscription_id and customer_reference are passed back <a id="click-7" class="click-help" href="#">as well we automatically log in</a></h2>
+			<h2>7. After testing the process set your account from test to live in both the <a id="click-8" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-account'); ?>" onClick="javascript:jQuery('#account').click();">Chargify Account tab</a> as well as the <a id="click-9" class="click-help" href="https://app.chargify.com/login.html" target="_blank">Chargify Dashboard</a></h2>
+<?php 
+			echo '</div>';
+			echo '<div id="chargify-help-box" style="width:45%;display:inline-block;position:absolute;">';
+			echo '</div>';
+			echo '</div>';
+         echo '<p class="submit"><input class="button-primary" type="submit" name="Submit" value="Update Options" /></p>';
          echo '</form>';
-        echo '</div>';
+		 echo '</div>';
+		
+		 $pluginurl = WP_PLUGIN_URL . '/' . plugin_basename(dirname(__FILE__));
+?>
+<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.click-help').mouseover(function(){
+			var thing = this.id;
+			thing = thing.replace('click-','');
+			var h = Math.floor(window.innerWidth/2);     
+			var v = Math.floor(window.innerHeight/2);    
+			hh = jQuery(document).scrollTop();     
+			jQuery('#chargify-help-box').css('right','10px');     
+			//jQuery('#chargify-help-box').css('top',v+hh-250+'px');     
+			jQuery('#chargify-help-box').css('top',hh+100+'px');     
+			jQuery('#chargify-help-box').html('<img style="max-width:100%;height:auto" src="<?php echo $pluginurl; ?>/images/'+ thing + '.jpg" />');
+		});
+		jQuery('.click-help').mouseout(function(){
+			jQuery('#chargify-help-box').html('');
+		});
+	})
+</script>
+<?php
 	}
 	function createMetaAccessBox() 
 	{
 		add_meta_box( 'new-meta-boxes', 'Chargify Access Settings', array('chargify','metaAccessBox'), 'page', 'normal', 'high' );
+		add_meta_box( 'new-meta-boxes', 'Chargify Access Settings', array('chargify','metaAccessBox'), 'post', 'normal', 'high' );
 	}
 
 	function login( $user_id, $user_login, $return_url ) 
 	{
+		if(!strlen($return_url))
+			$return_url = site_url();
+
 		$user = get_userdata( $user_id );
 		if( ! $user )
 			return;

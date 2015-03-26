@@ -62,4 +62,6 @@ class ChargifyProduct extends ChargifyConnector
   public function getDescription() {return $this->description; }
 
   public function getReturnUrl() {return $this->return_url; }
+
+  public function getReturnParams() {return $this->return_params; }
 }

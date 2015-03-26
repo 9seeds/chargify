@@ -44,6 +44,11 @@ class ChargifyConnector
     return $this->sendRequest('/customers.xml?page=' . $page_num);
   }
   
+  public function retrieveProductXMLByID($id)
+  {
+    	return $this->sendRequest('/products/' . $id . '.xml');
+	}
+  
   public function retrieveCustomerXMLByID($id)
   {
     return $this->sendRequest('/customers/' . $id . '.xml');
@@ -157,7 +162,15 @@ class ChargifyConnector
         
     return $customer;
   }
-  
+
+  public function getProductByID($id)
+  {
+	  $xml = $this->retrieveProductXMLByID($id);
+	  $product_xml_node = new SimpleXMLElement($xml);
+	  $product = new ChargifyProduct($product_xml_node);
+	  return $product;
+  }
+
   public function getSubscriptionsByCustomerID($id)
   {
     $xml = $this->retrieveSubscriptionsXMLByCustomerID($id);
