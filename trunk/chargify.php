@@ -780,7 +780,8 @@ class chargify
 
 	function controlForm()
 	{
-		echo '<style>.wp-editor-wrap{max-width: 700px;}</style>';
+		echo '<style>.wp-editor-wrap{max-width: 700px;}code{display:block}div.even{background:white;margin-top:15px;margin-bottom:15px;padding:10px}div.odd{padding:10px;}</style>';
+
 		$d = get_option("chargify");
         if (isset($_POST['chargify-save-nonce']) && wp_verify_nonce($_POST['chargify-save-nonce'], plugin_basename(__FILE__)))
 		{
@@ -957,23 +958,22 @@ class chargify
 			echo '<h1>Chargify Plugin Configuration Instructions</h1>';
 			echo '<div style="width:50%;display:inline-block">';
 ?>
-			<h2>1. <a id="click-1" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-signup'); ?>" onClick="javascript:jQuery('#signup').click();">Choose or have the plugin create</a> the order page</h2>
-			<h2>2. Enter your <a id="click-2" class="click-help" href="https://app.chargify.com/login.html" target="_blank">Chargify API keys</a> into the <a id="click-3" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-account'); ?>" onClick="javascript:jQuery('#account').click();">Chargify Account tab</a></h2>
-			<h2>3. Setup the <a id="click-4" class="click-help" href="https://app.chargify.com/login.html" target="_blank">Return URL and Return Parameters</a> for each product's public signup page</h2>
+			<div class="even"><h2>1. <a id="click-1" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-signup'); ?>" onClick="javascript:jQuery('#signup').click();">Choose or have the plugin create</a> the order page</h2></div>
+			<div class="odd"><h2>2. Enter your <a id="click-2" class="click-help" href="https://app.chargify.com/login.html" target="_blank">Chargify API keys</a> into the <a id="click-3" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-account'); ?>" onClick="javascript:jQuery('#account').click();">Chargify Account tab</a></h2></div>
+			<div class="even"><h2>3. Setup the <a id="click-4" class="click-help" href="https://app.chargify.com/login.html" target="_blank">Return URL and Return Parameters</a> for each product's public signup page</h2>
 			<em>This is important and has to happen in your Chargify account otherwise people will not be redirected back to your site after purchase and their accounts will not be created and everyone will become sad. Copy the Return URL and Return Parameters below into their respective slots on the public signup page's settings page</em><br><br>
 			<strong>Return URL after successful signup:</strong><br>
-			<style>code{display:block}</style>
 			<code>
 			<?php echo site_url(); ?>
 			</code>
 			<strong>Return Parameters:</strong><br>
 			<code>
 			subscription_id={subscription_id}&customer_reference={customer_reference}
-			</code>
-			<h2>4. Enable the products you want on your site in the <a id="click-5" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-products'); ?>" onClick="javascript:jQuery('#products').click();">Products tab</a></h2>
-			<h2>5. Protect some <a id="click-6" class="click-help" href="<?php echo admin_url(''); ?>">pages or posts</a></h2>
-			<h2>6. Test some transactions with CC number of 1, CVV of 123 and any Expiration in the future make sure the subscription_id and customer_reference are passed back <a id="click-7" class="click-help" href="#">as well we automatically log in</a></h2>
-			<h2>7. After testing the process set your account from test to live in both the <a id="click-8" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-account'); ?>" onClick="javascript:jQuery('#account').click();">Chargify Account tab</a> as well as the <a id="click-9" class="click-help" href="https://app.chargify.com/login.html" target="_blank">Chargify Dashboard</a></h2>
+			</code></div>
+			<div class="odd"><h2>4. Enable the products you want on your site in the <a id="click-5" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-products'); ?>" onClick="javascript:jQuery('#products').click();">Products tab</a></h2></div>
+			<div class="even"><h2>5. Protect some <a id="click-6" class="click-help" href="<?php echo admin_url(''); ?>">pages or posts</a></h2></div>
+			<div class="odd"><h2>6. Test some transactions with CC number of 1, CVV of 123 and any Expiration in the future make sure the subscription_id and customer_reference are passed back as well as <a id="click-7" class="click-help" href="#">making sure we automatically log in</a></h2></div>
+			<div class="even"><h2>7. After testing the process set your account from test to live in both the <a id="click-8" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-account'); ?>" onClick="javascript:jQuery('#account').click();">Chargify Account tab</a> as well as the <a id="click-9" class="click-help" href="https://app.chargify.com/login.html" target="_blank">Chargify Dashboard</a></h2></div>
 <?php 
 			echo '</div>';
 			echo '<div id="chargify-help-box" style="width:45%;display:inline-block;position:absolute;">';
