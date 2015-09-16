@@ -500,6 +500,11 @@ class chargify
 						}
 					}
 				}
+				else
+				{
+					print_r('<script>console.log("Unknown customer ref");</script>');
+				}
+
 			}
 		}
 	}
