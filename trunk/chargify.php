@@ -4,7 +4,7 @@ Plugin Name: Chargify Modified
 Plugin URI: http://github.com/chadsterBAM/chargify
 Description: Manage subscriptions to WordPress using the Chargify API
 Author: Subscription Tools - Programming by 9seeds - Updates by Chris and Chad
-Version: 1.0.1
+Version: 1.1
 Author URI: http://9seeds.com/plugins
 GitHub Plugin URI: https://github.com/chadsterBAM/chargify
 GitHub Branch:     master
