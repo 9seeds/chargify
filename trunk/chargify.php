@@ -4,7 +4,7 @@ Plugin Name: Chargify Wordpress Plugin
 Plugin URI: http://9seeds.com/plugins
 Description: Manage subscriptions to WordPress using the Chargify API
 Author: Subscription Tools - Programming by 9seeds
-Version: 2.0
+Version: 2.0.10
 Author URI: http://9seeds.com/plugins
 */
 
@@ -31,11 +31,54 @@ add_action('show_user_profile', array('chargify','userActions'));
 add_action('edit_user_profile', array('chargify','userActions'));
 add_action('profile_update', array('chargify','userActionsUpdate'));
 add_action('admin_print_scripts-toplevel_page_chargify-admin-settings',array('chargify','adminScripts'));
+add_action('wp_login',array('chargify','checkSubStatus'),10,2);
 register_activation_hook(__FILE__,array("chargify","activate"));
 register_deactivation_hook(__FILE__,array("chargify","deactivate"));
 
 class chargify
 {
+	function checkSubStatus($login,$user)
+	{
+		$user_id = $user->ID;
+		if(empty($user->chargify_custid))
+			return;
+
+		$d = get_option('chargify');
+		$opt = array("api_key" => $d["chargifyApiKey"],"test_api_key" => $d["chargifyTestApiKey"],"domain" => $d["chargifyDomain"],"test_domain" => $d["chargifyTestDomain"],"test_mode"=>($d["chargifyMode"] == 'test'? TRUE : FALSE));
+		$connector = new ChargifyConnector($opt);
+
+		$sub = $connector->getSubscriptionsByCustomerID($user->chargify_custid);
+		if(is_array($sub))
+		{
+			//get user subscriptions
+			$usub = get_usermeta($user_id,'chargify_level',true);
+			foreach($sub as $s)
+			{
+				switch($s->getState())
+				{
+					case 'canceled':
+					case 'expired':
+					case 'trial_ended':
+						if(isset($usub[$s->getProduct()->getHandle()]))
+						{
+							unset($usub[$s->getProduct()->getHandle()]);
+							update_usermeta($user_id,'chargify_level',$usub);
+						}
+						break;
+
+					case 'paused':
+					case 'trialing':
+					case 'active':
+						if(!isset($usub[$s->getProduct()->getHandle()]))
+						{
+							$usub[$s->getProduct()->getHandle()] = time();
+							update_usermeta($user_id,'chargify_level',$usub);
+						}
+						break;
+				}
+			}
+		}
+	}
 	function adminScripts()
 	{
         $pluginurl = WP_PLUGIN_URL . '/' . plugin_basename(dirname(__FILE__));
@@ -212,6 +255,7 @@ class chargify
 		}
 		$d = get_option("chargify");
 		$return_url = $_GET['return_url'];
+		$plan = $_GET['plan'];
 
 		if($_POST['chargifySignupFirst'])
 			$first = $_POST['chargifySignupFirst'];
@@ -271,8 +315,11 @@ class chargify
 				<tr>
 					<td>Email</td>
 					<td><input type="text" name="chargifySignupEmail" value="'.$email.'"></td>
-				</tr>
-				<tr>
+				</tr>';
+
+				$form = apply_filters('chargify_signup_form_extra',$form,$d,$_REQUEST);
+
+				$form .= '<tr>
 					<th colspan="2">Payment Info</th>
 				</tr>
 				<tr>
@@ -317,7 +364,7 @@ class chargify
 			{
 				if ((isset($filteraccountingcodes[$p->getAccountCode()]) && $filteraccountingcodes[$p->getAccountCode()]) || count($filteraccountingcodes) == 0) {
 					$form .= '<tr>';
-					$form .= '<td><div align="center"><strong><p>'.$p->getName().'</strong><br>$'.$p->getPriceInDollars().' '.($p->getInterval() == 1 ? 'each '.$p->getIntervalUnit() : 'every '.$p->getInterval().' '.$p->getIntervalUnit().'s').'<br>'.$p->getDescription().'</p></div></td>';
+					$form .= '<td><div align="center"><strong><p>'.$p->getName().'</strong><br>$'.$p->getPriceInDollars().' '.($p->getInterval() == 1 ? 'each '.$p->getIntervalUnit() : 'every '.$p->getInterval().' '.$p->getIntervalUnit().'s').'<br>'.str_replace('\\','',$p->getDescription()).'</p></div></td>';
 					$form .= '<td><p><input onclick="javascript:document.chargifySignupForm.submit.value=\''.$p->id.'\';" name="submit'.$p->getHandle().'" type="submit" value="'.$p->getName().'"></p></td>';
 					$form .= '</tr>';
 					$productdisplayed = 1;
@@ -353,50 +400,88 @@ class chargify
 				<tr>
 					<td>Email</td>
 					<td><input type="text" name="chargifySignupEmail" value="'.$email.'"></td>
-				</tr>
-				<tr>
-					<th colspan="2"><p><strong>Subscription Level</strong></p></th>
-				</tr>
-				';
+				</tr>';
+
+			$form = apply_filters('chargify_signup_form_extra',$form,$d,$_REQUEST);
 			
+
 			$products = self::products();
 			$productdisplayed = 0;
 			if(is_array($products))
 			foreach($products as $p)
 			{
-				if ((isset($filteraccountingcodes[$p->getAccountCode()]) && $filteraccountingcodes[$p->getAccountCode()]) || count($filteraccountingcodes) == 0) {
-					$form .= '<tr>';
-					$form .= '<td><div align="center"><strong><p>'.$p->getName().'</strong><br>$'.$p->getPriceInDollars().' '.($p->getInterval() == 1 ? 'each '.$p->getIntervalUnit() : 'every '.$p->getInterval().' '.$p->getIntervalUnit().'s').'<br>'.$p->getDescription().'</p></div></td>';
-					if(isset($current_user->chargify_level[$p->getHandle()]))
-					{	
-						$form .= '<td>';
-						$form .= 'You already have access to this level</td>';
+				$pNameAdjusted = sanitize_title_with_dashes($p->getName());
+				/*
+				$planNameAdjusted = str_replace('-', ' ', $plan);
+				$pName = strtolower($planName);
+				$pNameAdjusted = strtolower($planNameAdjusted);
+				*/
+				if ((isset($filteraccountingcodes[$p->getAccountCode()]) && $filteraccountingcodes[$p->getAccountCode()]) || count($filteraccountingcodes) == 0) 
+				{
+					if(!isset($plan))
+					{
+						$form .= '<tr>';
+						$form .= '<td><div align="center"><strong><p>'.$p->getName().'</strong><br>$'.$p->getPriceInDollars().' '.($p->getInterval() == 1 ? 'each '.$p->getIntervalUnit() : 'every '.$p->getInterval().' '.$p->getIntervalUnit().'s').'<br>'.$p->getDescription().'</p></div></td>';
+						if(isset($current_user->chargify_level[$p->getHandle()]))
+						{	
+							$form .= '<td>You already have access to this level</td>';
+						}
+						else
+						{
+							$form .= '<td><p><input onclick="javascript:document.chargifySignupForm.submit.value=\''.$p->id.'\';" name="submit'.$p->getHandle().'" type="submit" value="'.$p->getName().'"></p></td>';
+
+							$form .= '</tr>';
+							$productdisplayed = 1;
+						}
 					}
 					else
-						$form .= '<td><p><input onclick="javascript:document.chargifySignupForm.submit.value=\''.$p->id.'\';" name="submit'.$p->getHandle().'" type="submit" value="'.$p->getName().'"></p></td>';
-					$form .= '</tr>';
-					$productdisplayed = 1;
+					{
+						if($plan == $pNameAdjusted)
+						{
+							if(isset($current_user->chargify_level[$p->getHandle()]))
+							{	
+								$form .= '<td colspan="2">You already have access to this level</td>';
+							}
+							else
+							{
+								$form .= '<td colspan="2"><p><input onclick="javascript:document.chargifySignupForm.submit.value=\''.$p->id.'\';" name="submit'.$p->getHandle().'" type="submit" value="Continue to Checkout"></p></td>';
+							}
+						}
+						else
+							$form .= '';
+
+						$form .= '</tr>';
+						$productdisplayed = 1;
+					}
 				}
 			}
+
 			if(!$productdisplayed)
 			{
 				$form = '<form name="chargifySignupForm" method="post" action=""><table><tr><td colspan="2">No products found</td></tr>';
 			}
 			$form .= '</table>';
 			$form .= '</form>';
-
-
 		}
-		return $form;
+		return apply_filters('chargify_signup_form',$form,$d,$_REQUEST,$products);
 	}
+
 	function userActionsUpdate($user_id)
 	{
-		if($_POST["chargifyCancelSubscription"])
+		global $current_user;
+
+		if(isset($_POST["chargifyCancelSubscription"]) && is_numeric($_POST['chargifyCancelSubscription']) && ($user_id == $current_user->ID || current_user_can('activate_plugins')))
 		{
 			$d = get_option('chargify');
 			$opt = array("api_key" => $d["chargifyApiKey"],"test_api_key" => $d["chargifyTestApiKey"],"domain" => $d["chargifyDomain"],"test_domain" => $d["chargifyTestDomain"],"test_mode"=>($d["chargifyMode"] == 'test'? TRUE : FALSE));	
 			$connector = new ChargifyConnector($opt);
 			$connector->cancelSubscription($_POST["chargifyCancelSubscription"]);
+
+			//get rid of it on our side
+			$sub = $connector->getSubscriptionsBySubscriptionID($_POST['chargifyCancelSubscription']);
+			$usub = get_usermeta($user_id,'chargify_level',true);
+			unset($usub[$sub->getProduct()->getHandle()]);
+			update_usermeta($user_id,'chargify_level',$usub);
 		}
 	}
 	function userActions($u)
@@ -413,7 +498,8 @@ class chargify
 		{
 			foreach($sub as $s)
 			{
-				echo '<strong>'.$s->getProduct()->getName().'</strong><br>$'.$s->getProduct()->getPriceInDollars().' '.($s->getProduct()->getInterval() == 1 ? 'each '.$s->getProduct()->getIntervalUnit() : 'every '.$s->getProduct()->getInterval().' '.$s->getProduct()->getIntervalUnit().'s').'<br>'.$s->getProduct()->getDescription() . '<br>Subscription Status:<strong>'.$s->getState().'</strong><br><input type="checkbox" name="chargifyCancelSubscription" value="'.$s->id.'"><strong>Check this box to cancel this subscription</strong>';
+				echo '<strong>'.$s->getProduct()->getName().'</strong><br>$'.$s->getProduct()->getPriceInDollars().' '.($s->getProduct()->getInterval() == 1 ? 'each '.$s->getProduct()->getIntervalUnit() : 'every '.$s->getProduct()->getInterval().' '.$s->getProduct()->getIntervalUnit().'s').'<br>'.$s->getProduct()->getDescription() . '<br>Subscription Status:<strong>'.$s->getState().'</strong>';
+				//echo '<input type="checkbox" name="chargifyCancelSubscription" value="'.$s->id.'"><strong>Check this box to cancel this subscription</strong>';
 			}
 		}
 	}
@@ -427,6 +513,7 @@ class chargify
 		$products = self::products();
 		$form = '<strong>User levels that can access this content</strong> Note: If you don\'t choose any levels below this will be a <strong>public<strong> post<br>';
 		$form .= '<input type="hidden" name="access_noncename" id="access_noncename" value="'.wp_create_nonce( plugin_basename(__FILE__) ).'" />';
+		if(is_array($products))
 		foreach($products as $p)
 		{
 			$form .= '<input type="checkbox" name="chargifyAccess['.$p->getHandle().'][enable]" value="'.$p->getHandle().'" '.(isset($levels[$p->getHandle()]) && isset($levels[$p->getHandle()]) ? "checked" : "").'> '.$p->getName();
@@ -453,11 +540,12 @@ class chargify
 				$trans = get_transient('chargify-'.$_GET['customer_reference']);
 				if(is_array($trans) && isset($trans['user_email']))
 				{
+					$user_login = $trans['user_login'];
 					$email = $trans['user_email'];
 					$user_pass = $trans['user_pass'];
 
 					$args = array(
-						'user_login' => $email,
+						'user_login' => $user_login,
 						'user_pass' => $user_pass,
 						'user_email' => $email,
 					);
@@ -496,9 +584,14 @@ class chargify
 						else
 						{
 							wp_new_user_notification($user_id, $user_pass);
-							self::login( $user_id, $email,$trans['return_url']);
+							if(apply_filters('chargify_auto_login',true))
+								self::login( $user_id, $email,$trans['return_url']);
 						}
 					}
+				}
+				else
+				{
+					echo 'Unknown customer ref';
 				}
 			}
 		}
@@ -506,7 +599,7 @@ class chargify
 	function subscriptionRedirect()
 	{
 		global $current_user;
-		if ( wp_verify_nonce( $_POST['chargify_signup_noncename'], plugin_basename(__FILE__) ) && is_numeric($_POST["submit"]))
+		if (isset( $_POST['chargify_signup_noncename'] ) && wp_verify_nonce( $_POST['chargify_signup_noncename'], plugin_basename(__FILE__) ) && is_numeric($_POST["submit"]))
 		{	
 			
 			if(!is_email($_POST["chargifySignupEmail"]) || !strlen($_POST["chargifySignupFirst"]) || !strlen($_POST["chargifySignupLast"]))
@@ -516,16 +609,26 @@ class chargify
 			}
 			
 			$d = get_option("chargify");
-			$user_login = sanitize_user( $_POST["chargifySignupEmail"] );
+			$user_login = sanitize_user( apply_filters('chargify_signup_username',$_POST["chargifySignupEmail"]) );
 			$user_email = apply_filters( 'user_registration_email', $_POST["chargifySignupEmail"] );
-			if((username_exists($user_login) || email_exists($user_email)) && !$current_user->ID)
+			if(email_exists($user_email) && !$current_user->ID)
 			{
 				$_POST["chargify_signup_error"] = array('ERROR'=>"That email address is already in use, please choose another.");
 				return 0;
 			}
+			elseif(username_exists($user_login) && !$current_user->ID)
+			{
+				$_POST["chargify_signup_error"] = array('ERROR'=>"That user name is already in use, please choose another.");
+				return 0;
+			}
 			else
 			{
-				$user_pass = wp_generate_password();
+				$user_pass = apply_filters('chargify_signup_pass',wp_generate_password());
+
+				if(!$user_pass) {
+					$_POST["chargify_signup_error"] = array('ERROR'=>"Password mismatch, please try again");
+					return 0;
+				}
 				$return_url = $_REQUEST['return_url'];
 				$trans = array();
 				$trans["user_login"] = $user_login;
@@ -537,7 +640,7 @@ class chargify
 				if($current_user->ID)
 					$trans['existing_user'] = true;
 
-				set_transient("chargify-".md5($user_email.$_POST['submit']),$trans);
+				set_transient("chargify-".md5($user_email.$_POST['submit'].time()),$trans);
 
 				$opt = array("api_key" => $d["chargifyApiKey"],"test_api_key" => $d["chargifyTestApiKey"],"domain" => $d["chargifyDomain"],"test_domain" => $d["chargifyTestDomain"],"test_mode"=>($d["chargifyMode"] == 'test'? TRUE : FALSE));	
 				$connector = new ChargifyConnector($opt);
@@ -546,7 +649,7 @@ class chargify
 				$pubpage = array_shift($product->public_signup_pages);
 				if(is_array($pubpage))
 				{
-					$uri = '?first_name='.urlencode($_POST["chargifySignupFirst"]).'&last_name='.urlencode($_POST["chargifySignupLast"]).'&email='.urlencode($_POST["chargifySignupEmail"]).'&reference='.urlencode(md5($user_email.$_POST['submit']));
+					$uri = '?first_name='.urlencode($_POST["chargifySignupFirst"]).'&last_name='.urlencode($_POST["chargifySignupLast"]).'&email='.urlencode($_POST["chargifySignupEmail"]).'&reference='.urlencode(md5($user_email.$_POST['submit'].time()));
 					
 					header("Location: ".$pubpage['url'].$uri);
 					exit;
@@ -566,7 +669,7 @@ class chargify
 				}
 			}
 		}
-		if(function_exists('json_decode') && $_SERVER["CONTENT_TYPE"] === 'application/json')
+		if(function_exists('json_decode') && isset($_SERVER["CONTENT_TYPE"]) && $_SERVER["CONTENT_TYPE"] === 'application/json')
 		{
 			global $wpdb;
 			$sub_ids = json_decode(file_get_contents('php://input'));
@@ -602,6 +705,7 @@ class chargify
 		$opt = array("api_key" => $d["chargifyApiKey"],"test_api_key" => $d["chargifyTestApiKey"],"domain" => $d["chargifyDomain"],"test_domain" => $d["chargifyTestDomain"],"test_mode"=>($d["chargifyMode"] == 'test'? TRUE : FALSE));	
 		$connector = new ChargifyConnector($opt);
 		$subs = $connector->getSubscriptionsByCustomerID($u->chargify_custid);
+		if(is_array($subs))
 		foreach($subs as $sub)
 		{
 			if($sub->getState() == 'canceled')
@@ -647,7 +751,7 @@ class chargify
 		$d = get_option("chargify");
 
 		//Process full CC single form
-		if ( wp_verify_nonce( $_POST['chargify_signupcc_noncename'], plugin_basename(__FILE__) ))
+		if ( isset($_POST['chargify_signupcc_noncename']) && wp_verify_nonce( $_POST['chargify_signupcc_noncename'], plugin_basename(__FILE__) ))
 		{  
 			$d = get_option('chargify');
 			$opt = array("api_key" => $d["chargifyApiKey"],"test_api_key" => $d["chargifyTestApiKey"],"domain" => $d["chargifyDomain"],"test_domain" => $d["chargifyTestDomain"],"test_mode"=>($d["chargifyMode"] == 'test'? TRUE : FALSE));	
@@ -777,7 +881,19 @@ class chargify
 		add_submenu_page('chargify-admin-settings', 'Chargify Option', 'Chargify', 'activate_plugins', 'chargify-admin-settings', array('chargify', 'controlForm'));
 		//add_options_page('Chargify Options','Chargify','activate_plugins','chargify-admin-settings',array('chargify','controlForm'));
 	}
+	public static function sslcheck(){
+		$ch = curl_init('https://www.howsmyssl.com/a/check');
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		$data = curl_exec($ch);
+		curl_close($ch);
+		$curl_info = curl_version();
 
+		$json = json_decode( $data );
+		$tls = $json->tls_version;
+		if($tls != 'TLS 1.2')
+			echo '<div class="chargify-product-title disabled">Unsupported TLS: '.$json->tls_version.' OpenSSL: '.$curl_info['ssl_version'].'
+			<div style="font-size:small;font-style:italic">Your version of TLS is unsupported for accessing the Chargify API. <a href="https://docs.chargify.com/tls-upgrade-notice">Chargify TLS Documentation</a></div></div>';
+	}
 	function controlForm()
 	{
 		echo '<style>.wp-editor-wrap{max-width: 700px;}code{display:block}div.even{background:white;margin-top:15px;margin-bottom:15px;padding:10px}div.odd{padding:10px;}</style>';
@@ -844,7 +960,10 @@ class chargify
 			echo '</h2>';
 				
 			echo '<div id="account" class="chargify-options-hidden-pane">';
-            echo '<h3>Account Settings</h3>';
+
+			echo '<h3>Account Settings</h3>';
+
+			self::sslcheck();
             echo '<p><em>Get this information from your Chargify account. Unless you have multiple accounts, the test values for the API Key and Test Domain are likely the same as their non-test counterparts.</em></p>
             <table class="form-table"> 
                 <tr valign="top"> 
@@ -873,17 +992,22 @@ class chargify
 			echo '<h3>Chargify Product Settings</h3>';
 			echo '<style>.chargify-product{margin-bottom:25px;border:1px solid #dfdfdf;max-width:700px;padding:10px;background:white}.disabled{background:#333}.enabled{background:green}.chargify-product-title{color:white;margin-left:-10px;margin-right:-10px;margin-top:-10px;font-size:18pt;padding:10px;margin-bottom:10px;overflow:hidden}.chargify-product textarea{width:100%;height:6em}.chargify-product input[type="text"]{width:50%}.enablebox{float:right;}.sync{display:none}.outofsync{margin-right:25px;color:#c00}</style>';
 			$products = self::products(true);
+			if(is_array($products))
 			foreach($products as $p)
 			{
 				$sync = 'sync';
 				if($d['chargifyProducts'][$p->id]['raw'] != base64_encode(serialize($p)) && $d['chargifyProducts'][$p->id]['enable'] == 'on')
 					$sync = 'outofsync';	
+				$url = $d['chargifySignupLink'].'?plan='.strtolower(sanitize_title_with_dashes($p->getName()));
+				
 				echo '<input type="hidden" name="chargifyproduct['.$p->id.'][raw]" value="'.base64_encode(serialize($p)).'">';
 				echo '<div class="chargify-product">';
 				echo '<div class="chargify-product-title'.($d['chargifyProducts'][$p->id]['enable']?' enabled':' disabled').'">'.$p->getName().'<span class="enablebox"><span class="'.$sync.'">Out of Sync</span><input type="checkbox" name="chargifyproduct['.$p->id.'][enable]"'.($d['chargifyProducts'][$p->id]['enable']?' CHECKED':'').'>Enable</span></div>';
 				echo '<div>Name<br><input type="text" name="chargifyproduct['.$p->id.'][name]" value="'.$p->getName().'"></div>';
 				echo '<div>Description<br><textarea name="chargifyproduct['.$p->id.'][description]">'.$p->getDescription().'</textarea></div>';
 				echo '<div>Accounting Code<br><input type="text" name="chargifyproduct['.$p->id.'][acctcode]" value="'.$p->getAccountCode().'"></div>';
+				echo '<div>Direct Link<br>'.$url.'</div>';
+				
 				//echo '<div>Return Parameters<br><input type="text" name="chargifyproduct['.$p->id.'][return_params]" value="'.(strlen($p->getReturnParams())?$p->getReturnParams():'subscription_id={subscription_id}&customer_reference={customer_reference}').'"></div>';
 				//echo '<div><strong>Return URL: </strong>'.$p->getReturnUrl().'</div>';
 				echo '</div>';
@@ -958,6 +1082,9 @@ class chargify
 			echo '<h1>Chargify Plugin Configuration Instructions</h1>';
 			echo '<div style="width:50%;display:inline-block">';
 ?>
+			<div class="even"><h1>Documentation: <a href="http://chargifywp.com/documentation" target="_blank">View the documentation</a></h1>
+				Please use the documentation link for the most up to date and step by step instructions on how to put everything together. For your convenience, we have version 1.0 instructions below in case you find them helpful.
+			</div>
 			<div class="even"><h2>1. <a id="click-1" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-signup'); ?>" onClick="javascript:jQuery('#signup').click();">Choose or have the plugin create</a> the order page</h2></div>
 			<div class="odd"><h2>2. Enter your <a id="click-2" class="click-help" href="https://app.chargify.com/login.html" target="_blank">Chargify API keys</a> into the <a id="click-3" class="click-help" href="<?php echo admin_url('admin.php?page=chargify-admin-settings#chargify-account'); ?>" onClick="javascript:jQuery('#account').click();">Chargify Account tab</a></h2></div>
 			<div class="even"><h2>3. Setup the <a id="click-4" class="click-help" href="https://app.chargify.com/login.html" target="_blank">Return URL and Return Parameters</a> for each product's public signup page</h2>

@@ -1,10 +1,10 @@
 === WP-Chargify ===
-Contributors: toddhuish, vegasgeek, stastic, jasonglaspey
+Contributors: 9seeds, toddhuish, vegasgeek, jasonglaspey
 Website Link: http://9seeds.com
 Tags: Chargify, subscription, registration, tools, membership
 Requires at least: 2.9
-Tested up to: 4.1.1
-Stable Tag: 2.0
+Tested up to: 4.7.4
+Stable Tag: 2.0.10
 
 WP-Chargify allows users to integrate the Chargify service with WordPress.
 
@@ -43,6 +43,44 @@ WP-Chargify allows users to integrate the Chargify service with WordPress. Givin
 10. If that works, you'll need to continue setting up your Chargify account, inputting whatever information you need for your merchant account, payment gateway, or PayPal account. See chargify's support for more information on that.
 
 == Changelog ==
+= 2.0.10 =
+* Fix versioning
+
+= 2.0.9 =
+* Fix for TLS 1.2 - Force 1.2 and display error if system doesn't support it
+
+= 2.0.8 =
+* Fix inifinite slashes in chargify product forms
+
+= 2.0.7 =
+* Remove ALL debug code
+
+= 2.0.6 =
+* Remove debug code
+
+= 2.0.5 =
+* Add filter to change the signup form 
+* Add filter to disable automatic login after purchase
+
+= 2.0.4 =
+* Make the plugin safe to use with Ampersands in names
+
+= 2.0.3 =
+* Add the ability to pass in pre-selected plan to order form
+
+= 2.0.2 =
+* Fix cancellations so they are effective no matter where they happen
+
+= 2.0.1 =
+* Fix an naked API key
+* Fix some warnings
+
+= 2.0 =
+* Partially protect content with shortcodes
+* Drip content based on number of days after purchase date
+* Clean up settings page and simplify the steps for setup
+* Added an easy to access help section
+
 = 1.0.4 =
 * Refactor for WP 4.1.1
 * Automatically create and login user on subscription creation
@@ -60,3 +98,33 @@ WP-Chargify allows users to integrate the Chargify service with WordPress. Givin
 = 1.0.1 =
 * Remove hard coded image call
 * Continue hoping no one noticed hard coded image call
+
+== Frequently Asked Questions ==
+= What are the new fangled filters I keep hearing about? =
+Add extra fields to the bottom of the register forms
+`
+filter: 'chargify_signup_form_extra'
+Input: HTML Form, chargify options, $_REQUEST
+Return: Form appended with extra fields
+`
+
+Turn off the redirect/login call after successful payment
+`
+filter: 'chargify_auto_login'
+Input: true
+Return: true/false
+`
+
+Allows the username to be set from the new filtered form
+`
+filter: 'chargify_signup_username'
+Input: email address
+Return: Alternate username
+`
+
+Allows the password to be set via the new form.
+`
+filter: 'chargify_signup_pass'
+Input: Random standard 12 character WP password
+Return: Alternate defined password
+`
